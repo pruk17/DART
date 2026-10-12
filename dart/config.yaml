@@ -1,0 +1,24 @@
+# DART parameters (concept section 10).
+# Loaded by the sim and, later, by the ROS2 node layer.
+
+robot:
+  speed: 0.22            # s - nominal speed (m/s). TurtleBot3 Burger max ~0.22.
+  goal_tol: 0.10         # distance (m) within which a goal counts as reached.
+  safe_distance: 0.25    # LiDAR distance (m) that triggers wall following.
+
+decider:
+  epsilon: 0.1           # switching margin / hysteresis (fraction) to stop oscillation.
+  replan_rate: 5.0       # Hz - how often Net scores are recomputed (step 7).
+
+# Per-task-type defaults. Calibrate lambda from half-life: lambda = ln(2) / t_halflife.
+task_types:
+  default:
+    v: 1.0               # base value.
+    lam: 0.0             # decay rate (0 = never spoils).
+  # Example (fill with real values):
+  # hot_dish:
+  #   v: 1.0
+  #   lam: 0.0578         # ~12 s half-life -> ln(2)/12.
+  # cold_drink:
+  #   v: 0.8
+  #   lam: 0.0116         # ~60 s half-life -> ln(2)/60.
