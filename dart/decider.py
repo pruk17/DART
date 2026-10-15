@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .scoring import RobotState, Target
+from .scoring import RobotState, Target, euclidean_distance, net_score
 
 
 @dataclass
@@ -31,32 +31,38 @@ def select_target(all_targets: list[Target], robot: RobotState) -> Target | None
     """Return the target with the highest Net score (i* = argmax Net_i).
 
     Returns None when `all_targets` is empty.
-
-    Steps (to implement):
-        1. scores = scoring.score_all(all_targets, robot)
-        2. pick the target id with the maximum Net score
-        3. return the matching Target object
     """
-    # TODO: implement argmax over Net scores.
-    raise NotImplementedError
+    if not all_targets:
+        return None
+    return max(all_targets, key=lambda t: net_score(t, all_targets, robot))
 
 
 def should_switch(
     current: Target,
     candidate: Target,
+    all_targets: list[Target],
     robot: RobotState,
     params: DeciderParams,
 ) -> bool:
     """Return True if the robot should abandon `current` for `candidate`.
 
-    Hysteresis rule (to implement):
-        switch only if  Net(candidate) > Net(current) * (1 + epsilon)
+    Hysteresis rule (additive margin, robust to negative Net):
 
-    This keeps the robot committed unless the new option is clearly better,
-    avoiding rapid target oscillation.
+        switch only if  Net(candidate) - Net(current) > epsilon * |Net(current)|
+
+    The candidate must beat the current target by a margin of epsilon times the
+    current score's magnitude. This keeps the robot committed unless the new
+    option is clearly better, avoiding rapid target oscillation (flip-flop).
+
+    Note: `all_targets` is needed because net_score includes the basket-bleed
+    term, which sums over the other targets.
     """
-    # TODO: compare Net(candidate) against Net(current) with the epsilon margin.
-    raise NotImplementedError
+    if candidate is current:
+        return False
+    net_current = net_score(current, all_targets, robot)
+    net_candidate = net_score(candidate, all_targets, robot)
+    margin = params.epsilon * abs(net_current)
+    return (net_candidate - net_current) > margin
 
 
 def nearest_target(all_targets: list[Target], robot: RobotState) -> Target | None:
@@ -65,5 +71,9 @@ def nearest_target(all_targets: list[Target], robot: RobotState) -> Target | Non
     This is the "nearest-first" baseline that DART is compared against in the
     sim. It ignores value and decay entirely. Returns None when empty.
     """
-    # TODO: implement argmin over euclidean_distance to robot.
-    raise NotImplementedError
+    if not all_targets:
+        return None
+    return min(
+        all_targets,
+        key=lambda t: euclidean_distance(robot.position, t.position),
+    )

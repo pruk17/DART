@@ -25,6 +25,7 @@ Selection rule:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 
@@ -72,8 +73,7 @@ def euclidean_distance(a: tuple[float, float], b: tuple[float, float]) -> float:
 
     Standard form: d = sqrt((x_a - x_b)^2 + (y_a - y_b)^2)
     """
-    # TODO: implement Euclidean distance.
-    raise NotImplementedError
+    return math.hypot(a[0] - b[0], a[1] - b[1])
 
 
 def travel_time(distance: float, speed: float) -> float:
@@ -81,8 +81,9 @@ def travel_time(distance: float, speed: float) -> float:
 
     No A*; this is a straight-line time estimate only.
     """
-    # TODO: implement t_i = distance / speed (guard speed > 0).
-    raise NotImplementedError
+    if speed <= 0.0:
+        raise ValueError("speed must be positive to estimate travel time")
+    return distance / speed
 
 
 def value_remaining(v: float, lam: float, tau: float) -> float:
@@ -90,8 +91,7 @@ def value_remaining(v: float, lam: float, tau: float) -> float:
 
     The amount of a target's value still collectable after elapsed time tau.
     """
-    # TODO: implement v * exp(-lam * tau).
-    raise NotImplementedError
+    return v * math.exp(-lam * tau)
 
 
 def basket_bleed(target: Target, others: list[Target], t_i: float) -> float:
@@ -103,8 +103,12 @@ def basket_bleed(target: Target, others: list[Target], t_i: float) -> float:
     This is how much every OTHER target decays during the trip of length t_i.
     `others` must already exclude `target`.
     """
-    # TODO: sum value lost by each other target over t_i.
-    raise NotImplementedError
+    total = 0.0
+    for j in others:
+        # Value target j loses over the travel time t_i:
+        #   v_j * (1 - exp(-lambda_j * t_i))
+        total += j.v * (1.0 - math.exp(-j.lam * t_i))
+    return total
 
 
 def net_score(target: Target, all_targets: list[Target], robot: RobotState) -> float:
@@ -121,11 +125,14 @@ def net_score(target: Target, all_targets: list[Target], robot: RobotState) -> f
         4. bleed = basket_bleed(target, others, t_i)   # others = all_targets minus target
         5. return gain - bleed
     """
-    # TODO: implement using the helpers above.
-    raise NotImplementedError
+    d_i = euclidean_distance(robot.position, target.position)
+    t_i = travel_time(d_i, robot.speed)
+    gain = value_remaining(target.v, target.lam, t_i)
+    others = [j for j in all_targets if j is not target]
+    bleed = basket_bleed(target, others, t_i)
+    return gain - bleed
 
 
 def score_all(all_targets: list[Target], robot: RobotState) -> dict[str, float]:
     """Return {target_id: Net_i} for every target in `all_targets`."""
-    # TODO: call net_score for each target and collect into a dict.
-    raise NotImplementedError
+    return {t.id: net_score(t, all_targets, robot) for t in all_targets}
