@@ -1,0 +1,3 @@
+[console_scripts]
+dart-sim = dart.sim.run_comparison:main
+

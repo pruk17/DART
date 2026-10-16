@@ -1,0 +1,13 @@
+Metadata-Version: 2.1
+Name: dart
+Version: 0.1.0
+Summary: DART core logic (scoring + decider + decay). Pure Python, ROS-agnostic.
+Home-page: UNKNOWN
+Author: chaiyapruk
+Author-email: chaiyapruk6494@gmail.com
+License: MIT
+Platform: UNKNOWN
+Requires-Python: >=3.8
+
+UNKNOWN
+

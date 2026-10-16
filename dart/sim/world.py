@@ -18,7 +18,8 @@ import math
 import random
 from dataclasses import dataclass, field
 
-from ..scoring import RobotState, Target, euclidean_distance, value_remaining
+from ..decay import decay_basket
+from ..scoring import RobotState, Target, euclidean_distance
 
 
 @dataclass
@@ -102,17 +103,14 @@ class World:
         A target is expired when its value falls below
         expire_threshold * initial_value. Returns how many expired this step.
         """
-        expired = 0
-        survivors: list[Target] = []
-        for t in self.targets:
-            t.v = value_remaining(t.v, t.lam, self.config.dt)
-            v0 = self.initial_value.get(t.id, t.v)
-            if t.v < self.config.expire_threshold * v0:
-                expired += 1
-            else:
-                survivors.append(t)
+        survivors, expired = decay_basket(
+            self.targets,
+            self.initial_value,
+            self.config.dt,
+            self.config.expire_threshold,
+        )
         self.targets = survivors
-        return expired
+        return len(expired)
 
     def try_serve(self, goal_pos: tuple[float, float]) -> float:
         """Serve a target if the robot has reached one.
