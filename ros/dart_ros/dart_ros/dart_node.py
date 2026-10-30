@@ -12,7 +12,8 @@ Per tick it:
                                  (DART_concept step 7 / 8.1)
     5. navigator.set_goal/step-> reactive Bug2 -> (v, w); m-line redrawn only on
                                  an actual target change
-    6. publishes /cmd_vel; drops a target once reached
+    6. publishes /cmd_vel; drops a target once reached (the current one, or any
+                                 other one passed within goal_tol on the way)
 
 Parameters (ROS params, override in the launch file):
     config_file   : path to the DART YAML (targets + tuning)
@@ -388,28 +389,18 @@ class DartNode(Node):
             return
 
         if self.navigator.at_goal(pos):
-            self._served += 1
-            self._collected += self._current.v
-            v0 = self._initial_value.get(self._current.id, self._current.v)
-            pct = 100.0 * self._current.v / v0 if v0 > 0 else 0.0
-            self._quality_pcts.append(pct)
-            self._event(
-                f"reached {self._current.id} "
-                f"(v={self._current.v:.2f} / {v0:.2f} | {pct:.0f}%) "
-                f"( λ={self._current.lam:.4f} | t½={self._half_life_str(self._current.lam)})"
-            )
-            self._delivered[self._current.id] = (self._served, pct)
-            self.targets.remove(self._current)
+            self._deliver(self._current)
             self._current = None
             self._nav_target_id = None
-            self._publish(0.0, 0.0)
-            # stop here for the service time (handing over the food)
-            if self.cfg.service_time > 0.0:
-                self._dwell_until_ns = (
-                    self.get_clock().now().nanoseconds + int(self.cfg.service_time * 1e9)
-                )
-                self.get_logger().info(f"serving: waiting {self.cfg.service_time:.1f} s")
             return
+
+        # Deliver on the way: passing within goal_tol of another target (e.g.
+        # while going round an obstacle) serves it there and then. The current
+        # target and the Bug2 state are kept, so the robot carries on after.
+        for tg in self.targets:
+            if tg is not self._current and euclidean_distance(pos, tg.position) <= self.cfg.robot.goal_tol:
+                self._deliver(tg, note=" on the way to " + self._current.id)
+                return
 
         try:
             lin, ang = self.navigator.step(
@@ -426,6 +417,28 @@ class DartNode(Node):
 
         self._publish(lin, ang)
         self._debug_block(robot, pos, yaw, order, lin, ang)
+
+    def _deliver(self, tg, note: str = "") -> None:
+        """Serve target tg here: count it, log it, drop it, then stop for the
+        service time (handing over the food)."""
+        self._served += 1
+        self._collected += tg.v
+        v0 = self._initial_value.get(tg.id, tg.v)
+        pct = 100.0 * tg.v / v0 if v0 > 0 else 0.0
+        self._quality_pcts.append(pct)
+        self._event(
+            f"reached {tg.id}{note} "
+            f"(v={tg.v:.2f} / {v0:.2f} | {pct:.0f}%) "
+            f"( λ={tg.lam:.4f} | t½={self._half_life_str(tg.lam)})"
+        )
+        self._delivered[tg.id] = (self._served, pct)
+        self.targets.remove(tg)
+        self._publish(0.0, 0.0)
+        if self.cfg.service_time > 0.0:
+            self._dwell_until_ns = (
+                self.get_clock().now().nanoseconds + int(self.cfg.service_time * 1e9)
+            )
+            self.get_logger().info(f"serving: waiting {self.cfg.service_time:.1f} s")
 
     def _debug_block(self, robot, pos, yaw, order, lin, ang) -> None:
         """Throttled, human-readable snapshot of the full decision/nav state."""
