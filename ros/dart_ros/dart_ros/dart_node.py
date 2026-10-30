@@ -395,11 +395,14 @@ class DartNode(Node):
             return
 
         # Deliver on the way: passing within goal_tol of another target (e.g.
-        # while going round an obstacle) serves it there and then. The current
-        # target and the Bug2 state are kept, so the robot carries on after.
+        # while going round an obstacle) serves it there and then. Like after
+        # any delivery, the current target is then restarted from here: new
+        # m-line, Bug2 state cleared (the old m-line / hit point may be far
+        # behind, and following on from them can circle an obstacle forever).
         for tg in self.targets:
             if tg is not self._current and euclidean_distance(pos, tg.position) <= self.cfg.robot.goal_tol:
                 self._deliver(tg, note=" on the way to " + self._current.id)
+                self._nav_target_id = None   # -> set_goal(pos, current) on the next cycle
                 return
 
         try:
