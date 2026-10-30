@@ -1,0 +1,13 @@
+# SIM targets for the Gazebo cube world (dart_cubes.world).
+# Frame: ODOM -> positions are RELATIVE TO THE ROBOT'S START (spawned at origin).
+# Pose comes from /odom (no map needed). Launch: sim.launch.py
+include: common.yaml
+
+targets:
+  - { id: t1, position: [ 2.4,  1.6], v: 5.0, lam: 0.02 }   # upper-right, high, stable
+  - { id: t2, position: [-2.6,  1.4], v: 3.0, lam: 0.01 }   # upper-left
+  - { id: t3, position: [ 2.6, -1.6], v: 4.0, lam: 0.08 }   # lower-right, perishable
+  - { id: t4, position: [-2.4, -1.6], v: 3.0, lam: 0.005 }  # lower-left, very stable
+  - { id: t5, position: [ 0.2,  3.1], v: 4.0, lam: 0.10 }   # top, perishable, far
+  - { id: t6, position: [-0.3, -3.1], v: 2.0, lam: 0.03 }   # bottom
+  - { id: t7, position: [ 3.4,  0.1], v: 5.0, lam: 0.05 }   # right, high

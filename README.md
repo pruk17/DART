@@ -40,15 +40,15 @@ Choose `i* = argmax_i Net_i`. Symbols: `v` base value, `lambda` decay rate
 | File | Role | Status |
 |---|---|---|
 | `dart/scoring.py` | Net_i math (section 4) | ✅ **implemented + tested** |
-| `dart/decider.py` | argmax select + hysteresis switch + nearest-first baseline | ✅ **implemented + tested** |
-| `dart/sim/world.py` | headless 2D world (decay, serve, scenario gen) | ✅ **implemented** |
-| `dart/sim/run_comparison.py` | run DART vs nearest-first, report | ✅ **implemented** |
-| `dart/localization/pose_source.py` | pose abstraction | ⚠️ `SimPoseSource` done, `AmclPoseSource` **stub** |
-| `dart/navigator.py` | reactive Bug2 drive + LiDAR avoid | ❌ **stub (all `raise NotImplementedError`)** |
-| `dart/config.yaml` | parameters (s, epsilon, v, lambda) | ✅ values present; **no loader yet** |
+| `dart/decay.py` | value decay + expiry (shared sim + ROS) | ✅ **implemented + tested** |
+| `dart/planner.py` | lookahead ordering (full-permutation <=7, 2-opt above) — drives the robot | ✅ **implemented + tested** |
+| `dart/decider.py` | argmax + hysteresis + nearest-first | ✅ kept as the **sim baseline** (no longer drives the robot) |
+| `dart/sim/world.py`, `run_comparison.py` | headless DART vs nearest-first | ✅ **implemented** |
+| `dart/localization/pose_source.py` | pure `PoseSource` + `SimPoseSource` | ✅ (ROS Odom/AMCL sources live in `dart_ros`) |
 
-Not built yet: a config loader (`config.py`), and the **ROS2 node layer**
-(subscribe `/scan`, `/amcl_pose`; publish `/cmd_vel`; run the online loop).
+The ROS2 node layer, Bug2 navigator, and AMCL/Odom pose sources are implemented
+in the **`dart_ros`** package (see `../dart_ros`), not here. The old
+`dart/navigator.py` stub and `AmclPoseSource` stub were removed.
 
 ---
 
@@ -135,15 +135,12 @@ global path planning.
 
 ---
 
-## 8. Suggested next steps (in order)
+## 8. Status / next steps
 
-1. Add `dart/config.py` to load `config.yaml` into `RobotState` /
-   `DeciderParams` / per-type `(v, lambda)`.
-2. Implement `dart/navigator.py` (reactive Bug2). Write it distro-aware for
-   `/cmd_vel` (Twist vs TwistStamped).
-3. Implement `AmclPoseSource` in `dart/localization/pose_source.py`.
-4. Add the ROS2 node layer wrapping the online loop.
-5. (Research) sweep parameters to find where DART's advantage is largest.
+Core algorithm + ROS2 layer are implemented (see `../dart_ros`). Decision now
+uses lookahead planning (`planner.py`), not greedy. Open research: parameter
+sweeps for where DART's advantage is largest, and a receding-horizon vs greedy
+comparison.
 
 ## 9. Module layout
 
@@ -151,14 +148,44 @@ global path planning.
 dart/
   __init__.py
   scoring.py            # Net_i computation            [done]
-  decider.py            # argmax + hysteresis + nearest-first baseline [done]
-  navigator.py          # reactive Bug2 drive + LiDAR avoid           [stub]
+  decay.py              # value decay + expiry         [done]
+  planner.py            # lookahead ordering (perm/2-opt) [done, drives the robot]
+  decider.py            # argmax + hysteresis + nearest-first [done, sim baseline]
   config.yaml           # parameters (s, epsilon, v, lambda)
   localization/
     __init__.py
-    pose_source.py      # PoseSource / SimPoseSource[done] / AmclPoseSource[stub]
+    pose_source.py      # PoseSource + SimPoseSource   [ROS sources live in dart_ros]
   sim/
     __init__.py
     world.py            # headless world              [done]
     run_comparison.py   # DART vs nearest-first       [done]
+```
+
+## 10. Repository layout (ROS 2 workspace)
+
+The repo root is the pure-Python `dart` package. The ROS 2 side lives in subfolders:
+
+```
+dart/            pip package (scoring, decay, planner, sim)
+ros/dart_ros/    ROS 2 Humble package: dart_node, Bug2 navigator, configs, launch, rviz
+docker/          Humble container (Dockerfile, run.sh, SETUP.md)
+tools/           map2world.py (map -> Gazebo world), rotate_map.py (axis-align a map)
+maps/            SLAM maps (map_small is the launch default)
+```
+
+colcon does not look inside a package folder, so the workspace links the ROS
+package and the helper folders next to it:
+
+```bash
+mkdir -p ~/DART_ws/src && cd ~/DART_ws/src && git clone https://github.com/pruk17/DART.git
+ln -s DART/ros/dart_ros dart_ros
+cd ~/DART_ws && ln -s src/DART/docker docker && ln -s src/DART/tools tools && ln -s src/DART/maps maps
+./docker/run.sh build && ./docker/run.sh up          # then: colcon build --symlink-install
+```
+
+Real robot (PC side, map_small, start = RViz bottom-left facing +x):
+
+```bash
+ros2 launch dart_ros real.launch.py                                                   # localization + RViz
+ros2 launch dart_ros real.launch.py localization:=false rviz:=false start_dart:=true  # DART
 ```

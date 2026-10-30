@@ -1,0 +1,26 @@
+# REAL-ROBOT test on maps/map_small.yaml (same room as map_test, new SLAM).
+#
+# map_small's SLAM started in the room's bottom-left corner facing "up", so the
+# map is turned 90 deg against the way we name the room:
+#   room up    = map +x      room right = map -y
+#   room left  = map +y      room down  = map -x
+# Room inner faces in this map: x[-0.15, 1.15], y[-1.11, 0.19] (1.30 x 1.30 m).
+# Positions are the same physical spots as real_test_0deg.yaml: targets 0.18 m
+# from both walls of their corner (registration of the two maps agrees within
+# ~3 cm). All legs reached in simulation.
+#
+# Launch (start = room bottom-right corner, facing room-up = map +x):
+#   real.launch.py map:=/ws/maps/map_small.yaml x0:=0.19 y0:=-0.78 yaw0:=0.0
+#   ... start_dart:=true config_file:=.../real_small.yaml
+include: real.yaml   # common tuning + real-robot overrides (max_ang)
+
+# Small room (same reasoning as real_test.yaml).
+robot:
+  safe_distance: 0.28
+  wall_offset: 0.20
+
+targets:
+  - { id: m1, position: [0.97, -0.93], type: ice_cream }   # room top-right
+  - { id: m2, position: [0.97,  0.01], type: main_dish }   # room top-left
+  - { id: m3, position: [0.03,  0.01], type: hot_soup  }   # room bottom-left
+  - { id: m4, position: [0.03, -0.93], type: fries     }   # RViz bottom-left (start corner), 0.18 m from both walls

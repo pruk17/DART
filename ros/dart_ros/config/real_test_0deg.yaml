@@ -1,0 +1,25 @@
+# REAL-ROBOT test on maps/map_test_0deg.yaml: map_test rotated +11.5 deg
+# (tools/rotate_map.py), so the room walls are axis-aligned:
+#   x = horizontal (+ right), y = vertical (+ up), metres.
+# Room inner faces: left x=-1.20, right x=+0.10, bottom y=-1.10, top y=+0.20.
+#
+# Launch (start = bottom-right corner, facing up along the right wall):
+#   real.launch.py map:=/ws/maps/map_test_0deg.yaml x0:=-0.23 y0:=-0.76 yaw0:=1.57
+#   ... start_dart:=true config_file:=.../real_test_0deg.yaml
+#
+# Targets sit 0.18 m from both walls of their corner: the closest that reached
+# the goal on every leg in simulation (0.17 already got stuck once; 0.15 puts
+# the point within the robot's radius of the wall). The robot counts a target
+# as reached within goal_tol (0.15 m), so moving points closer than this does
+# not make it stop closer.
+include: real.yaml   # common tuning + real-robot overrides (max_ang)
+
+# Small room (same reasoning as real_test.yaml).
+robot:
+  safe_distance: 0.28
+  wall_offset: 0.20
+
+targets:
+  - { id: m1, position: [-0.08,  0.02], type: ice_cream }   # top-right
+  - { id: m2, position: [-1.02,  0.02], type: main_dish }   # top-left
+  - { id: m3, position: [-1.02, -0.92], type: hot_soup  }   # bottom-left

@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>dart_ros</name>
+  <version>0.1.0</version>
+  <description>ROS2 node layer for DART: wires scoring/decider to /scan, pose, and /cmd_vel on TurtleBot3.</description>
+  <maintainer email="chaiyapruk6494@gmail.com">chaiyapruk</maintainer>
+  <license>MIT</license>
+
+  <!-- `dart` is a plain pip package (src/DART), installed with `pip install -e`,
+       not a colcon package — so it is not listed as a ROS exec_depend. -->
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>tf_transformations</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <!-- localization pipeline (real.launch.py / sim_amcl.launch.py) -->
+  <exec_depend>nav2_map_server</exec_depend>
+  <exec_depend>nav2_amcl</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>nav2_rviz_plugins</exec_depend>
+  <!-- simulation (sim.launch.py / sim_amcl.launch.py) -->
+  <exec_depend>turtlebot3_gazebo</exec_depend>
+  <exec_depend>turtlebot3_navigation2</exec_depend>
+  <exec_depend>gazebo_ros</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
