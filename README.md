@@ -48,7 +48,7 @@ ros/dart_ros/         ROS 2 Humble package (ament_python)
   config/                 common.yaml + per-mode files (sim, sim_amcl, real, real_small, ...)
   launch/                 sim.launch.py, sim_amcl.launch.py, real.launch.py
   rviz/ worlds/
-docker/               Humble container (Dockerfile, run.sh, SETUP.md in Thai)
+docker/               Humble container (Dockerfile, run.sh, SETUP.md)
 tools/                map2world.py, rotate_map.py
 maps/                 SLAM maps (map_small = default for the real robot)
 ```
