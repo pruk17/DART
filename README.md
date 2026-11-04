@@ -10,6 +10,10 @@ food that cools down or melts). Runs on a **TurtleBot3 Burger** with
 - **Navigation:** a reactive, DART-modified **Bug2** (no A\*, no global path
   planner). The map is used only for localization (AMCL) and goal coordinates.
 
+> **Full documentation:** [`docs/`](docs/README.md) — concept, architecture,
+> decision and navigation in depth, localization and safety, development
+> history with evidence, experiments and results, operations, limitations.
+
 ---
 
 ## Contents
@@ -49,7 +53,8 @@ ros/dart_ros/         ROS 2 Humble package (ament_python)
   launch/                 sim.launch.py, sim_amcl.launch.py, real.launch.py
   rviz/ worlds/
 docker/               Humble container (Dockerfile, run.sh, SETUP.md)
-tools/                map2world.py, rotate_map.py
+tools/                map2world.py, rotate_map.py, analysis/ (rosbag + simulator tools)
+docs/                 full documentation
 maps/                 SLAM maps (map_small = default for the real robot)
 ```
 
