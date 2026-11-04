@@ -1,0 +1,22 @@
+# REAL-ROBOT targets, in the MAP frame of your SLAM map (maps/map.yaml).
+# Pose comes from AMCL (TF map->base_footprint) localizing on that map.
+# Launch: real.launch.py
+#
+# Same map as sim_amcl.yaml, so the same coordinates are valid here. Shared
+# tuning (half-lives, deadline, service_time, clearances) comes from common.yaml.
+# If the real room differs from the map (furniture moved, etc.), re-check these
+# points in RViz before running.
+include: common.yaml
+
+# Real robot: cap turning speed. The LDS scans at ~5 Hz, so at 2.84 rad/s the
+# robot turns ~33 deg between scans (plus wheel slip) and AMCL can lose its pose.
+# Nav2's TurtleBot3 default is 1.0 rad/s. Other robot values come from common.yaml.
+robot:
+  max_ang: 1.2
+
+targets:
+  - { id: m1, position: [0.20, -0.10], type: main_dish  }   # upper-left
+  - { id: m2, position: [1.65, -0.20], type: ice_cream  }   # upper-right
+  - { id: m3, position: [0.50, -0.75], type: hot_soup   }   # centre-left
+  - { id: m4, position: [0.10, -1.60], type: salad      }   # lower-left
+  - { id: m5, position: [0.95, -1.60], type: cold_drink }   # lower-middle

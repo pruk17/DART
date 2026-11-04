@@ -1,0 +1,17 @@
+# SIM-WITH-AMCL targets, in the MAP frame of YOUR map (maps/map.yaml),
+# used with dart_room.world (generated from that map).
+# Room interior: x[-0.26,1.94] y[-1.93,0.27]. Robot starts at the lower-right
+# corner (1.75, -1.65) -- set in sim_amcl.launch.py (X0, Y0).
+# IDs only name the points; the visiting order is decided by the planner.
+# Launch: sim_amcl.launch.py
+include: common.yaml
+
+# v / lam come from the food type (common.yaml task_types).
+targets:
+  - { id: m1, position: [0.20, -0.10], type: main_dish  }   # upper-left
+  - { id: m2, position: [1.65, -0.20], type: ice_cream  }   # upper-right
+  - { id: m3, position: [0.50, -0.75], type: hot_soup   }   # centre-left
+  - { id: m4, position: [0.10, -1.60], type: salad      }   # lower-left
+  - { id: m5, position: [0.95, -1.60], type: cold_drink }   # lower-middle (next to start)
+
+

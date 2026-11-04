@@ -1,0 +1,25 @@
+# REAL-ROBOT test on the small map maps/map_test.yaml (MAP frame).
+# Launch: real.launch.py map:=/ws/maps/map_test.yaml config_file:=.../real_test.yaml
+#
+# Room measured from map_test.pgm: square, inside ~1.33 x 1.33 m, rotated
+# -11.5 deg in the map frame. m1/m2 sit 0.25 m in from both walls of their
+# corner, m3 0.35 m from the left and 0.25 m from the bottom wall (checked:
+# 0.23-0.26 m to the nearest occupied cell). The free 4th corner
+# (bottom-right, x=-0.38 y=-0.70, yaw 1.37 = facing up along the right wall)
+# is the start.
+include: real.yaml   # common tuning + real-robot overrides (max_ang)
+
+# Small room: Bug2 treats a gap as passable only if wider than about
+# wall_offset + body_clear (0.19 m). With 0.30 that is 0.49 m, which closed a
+# real 0.54 m gap beside the test obstacle (rosbag 2026-10-29). 0.20 -> 0.39 m.
+# 0.20 is the floor: wall_offset must stay above body_clear (0.19), else the
+# boundary being followed keeps tripping the collision guard. Body-to-obstacle
+# side clearance while hugging: 0.20 - 0.105 (Burger radius) ~ 0.095 m.
+robot:
+  safe_distance: 0.28
+  wall_offset: 0.20
+
+targets:
+  - { id: m1, position: [-0.25,  0.00], type: ice_cream }   # top-right
+  - { id: m2, position: [-0.95,  0.30], type: main_dish }   # top-left
+  - { id: m3, position: [-1.01, -0.80], type: hot_soup  }   # bottom-left

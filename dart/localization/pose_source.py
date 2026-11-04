@@ -2,7 +2,10 @@
 
 The core DART code only needs "where is the robot now". This interface hides
 whether that answer comes from a sim's ground truth or from AMCL on hardware,
-so `scoring`, `decider`, and `navigator` do not change between sim and robot.
+so the scoring/decision code does not change between sim and robot.
+
+The ROS-backed sources (Odom / AMCL) live in ``dart_ros.pose_source``; here we
+keep only the pure interface plus the headless-sim ground-truth source.
 """
 
 from __future__ import annotations
@@ -35,15 +38,3 @@ class SimPoseSource(PoseSource):
 
     def get_pose(self) -> tuple[float, float]:
         return self._pos
-
-
-class AmclPoseSource(PoseSource):
-    """AMCL-backed pose for TurtleBot (ROS2) - stub for later.
-
-    On hardware this will subscribe to /amcl_pose and return the latest
-    estimate. Not implemented in the pure-Python package.
-    """
-
-    def get_pose(self) -> tuple[float, float]:
-        # TODO: read latest AMCL pose when the ROS2 layer is added.
-        raise NotImplementedError

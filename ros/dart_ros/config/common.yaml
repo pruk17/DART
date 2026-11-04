@@ -1,0 +1,39 @@
+# Shared DART tuning, included by sim.yaml / real.yaml / sim_amcl.yaml.
+# Mode-specific files add their own `targets:` (and may override any value).
+
+robot:
+  speed: 0.20            # nominal speed (m/s). TurtleBot3 Burger max ~0.22.
+  goal_tol: 0.15         # distance (m) within which a goal counts as reached.
+  safe_distance: 0.35    # obstacle on the way to the goal within this (m) TRIGGERS wall-following.
+  wall_offset: 0.30      # distance kept from the obstacle WHILE following. Burger radius
+                         # is ~0.105 m, so this leaves ~0.15 m of real clearance.
+  max_ang: 2.84          # angular speed cap (rad/s). 2.84 = Burger hardware max (fine in sim).
+  wall_follow_speed: 0.8 # forward speed while going round an obstacle (Bug2), fraction of speed.
+
+decider:
+  epsilon: 0.15          # hysteresis: switch only if the plan beats keeping current first by this.
+  replan_rate: 20.0       # Hz - planner re-plan + decay rate.
+
+expire_threshold: 0.05   # drop a target once its value < 5% of its original value.
+
+service_time: 3.0        # seconds the robot stops at each delivery point (handing over food).
+                         # Decay keeps running while it waits; the planner accounts for it.
+
+deadline: 60.0           # the whole run should finish within this many seconds (1 minute).
+
+# Food types: v = importance/price; half_life = seconds until quality halves.
+# (lam = ln(2) / half_life is computed by the loader; `lam:` is still accepted.)
+# A target can say `type: <name>` instead of giving its own v / half_life.
+#
+# Half-lives are DERIVED from the 1-minute deadline: pick the quality each food
+# should still have if it is served exactly at 60 s, then
+#     half_life = 60 * ln2 / ln(1 / quality_at_60s)
+# These quality targets are a design choice for the demo, not measured data.
+task_types:
+  default:    { v: 1.0, half_life: 60  }   # 50% left at 60 s
+  ice_cream:  { v: 4.0, half_life: 30  }   # 25% left at 60 s (melts fastest)
+  hot_soup:   { v: 4.0, half_life: 40  }   # 35% left at 60 s
+  main_dish:  { v: 5.0, half_life: 60  }   # 50% left at 60 s (most valuable)
+  cold_drink: { v: 2.0, half_life: 95  }   # 65% left at 60 s
+  salad:      { v: 3.0, half_life: 185 }   # 80% left at 60 s (keeps well)
+  fries:      { v: 3.0, half_life: 35  }   # 30% left at 60 s (goes soggy almost as fast as ice cream)

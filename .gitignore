@@ -1,2 +1,4 @@
 *.pdf
-DART_concept.md
+DART_concept.md__pycache__/
+*.pyc
+*.egg-info/
