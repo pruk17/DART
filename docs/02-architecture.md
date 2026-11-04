@@ -62,14 +62,14 @@ ros/dart_ros/                 ROS 2 package (ament_python)
   dart_ros/pose_source.py       OdomPoseSource, AmclPoseSource (smoothed)
   dart_ros/config.py            YAML loader
   dart_ros/path_map.py          end-of-run PNG
-  config/*.yaml                 common.yaml + sim / sim_amcl / real / real_test / real_test_0deg / real_small
+  config/*.yaml                 common.yaml + sim / sim_amcl / real / real_test / real_small
   launch/                       sim.launch.py, sim_amcl.launch.py, real.launch.py
   rviz/real.rviz                RViz layout (map, scan, particles, robot, TF, 2D Pose Estimate)
   worlds/                       dart_cubes.world, dart_room.world (generated from a map)
 docker/                       Dockerfile, run.sh, SETUP.md
 tools/                        map2world.py, rotate_map.py, analysis/
 maps/                         map (2.2 m room), map_test (1.3 m room, tilted −11.5°),
-                              map_test_0deg (rotated), map_small (1.3 m room, new SLAM; default)
+                              map_small (1.3 m room, new SLAM; default)
 ```
 
 The pure-Python package is shared by the simulator and the robot so both use

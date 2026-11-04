@@ -9,7 +9,7 @@ A SLAM map is built once with the TurtleBot3 SLAM tools (saved with
 |---|---|---|
 | `map` | ~2.2 × 2.2 m | first test room |
 | `map_test` | 1.33 × 1.33 m | walls tilted −11.5° in the map frame |
-| `map_test_0deg` | same | `map_test` rotated +11.5° with `tools/rotate_map.py` so walls are axis-aligned |
+| `map_test_0deg` | same | `map_test` rotated +11.5° with `tools/rotate_map.py` so walls are axis-aligned; used for one round of tests, **no longer in the repo** (regenerate with the command in document 8) |
 | `map_small` | 1.30 × 1.30 m | new SLAM of the small room, **launch default** |
 
 `map_small` was recorded with the robot starting in the room's bottom-left

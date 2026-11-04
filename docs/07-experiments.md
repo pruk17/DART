@@ -120,7 +120,7 @@ Measured in the rosbags of runs 061059–061353 (static obstacles): command rate
 Without obstacles 18/18; with AMCL-like noise 66/72 reached, 6 unreachable
 (pocket cases), no collisions.
 
-### Target distance from walls (`map_test_0deg`, 16 legs)
+### Target distance from walls (`map_test_0deg` — a since-removed rotated copy of `map_test`; 16 legs)
 
 | Distance from both corner walls | Reached |
 |---|---:|

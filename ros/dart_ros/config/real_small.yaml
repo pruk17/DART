@@ -5,11 +5,13 @@
 #   room up    = map +x      room right = map -y
 #   room left  = map +y      room down  = map -x
 # Room inner faces in this map: x[-0.15, 1.15], y[-1.11, 0.19] (1.30 x 1.30 m).
-# Positions are the same physical spots as real_test_0deg.yaml: targets 0.18 m
-# from both walls of their corner (registration of the two maps agrees within
-# ~3 cm). All legs reached in simulation.
+# Targets sit 0.18 m from both walls of their corner: the closest distance at
+# which every leg was reachable in simulation. They are the same physical spots
+# as the earlier map_test layout (wall registration of the two maps agrees
+# within ~3 cm).
 #
-# Launch (start = room bottom-right corner, facing room-up = map +x):
+# Launch (start = bottom-left corner in RViz, facing map +x; these are the
+# real.launch.py defaults):
 #   real.launch.py map:=/ws/maps/map_small.yaml x0:=0.19 y0:=-0.78 yaw0:=0.0
 #   ... start_dart:=true config_file:=.../real_small.yaml
 include: real.yaml   # common tuning + real-robot overrides (max_ang)

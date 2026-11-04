@@ -128,7 +128,7 @@ Changed to the concept: switching allowed at any time, m-line redrawn.
 |---|---|---|
 | Robot weaves left-right constantly | rosbag: `/cmd_vel` 30 msg/s, zero commands every 0.1 s from `teleop_keyboard` | close teleop |
 | Residual weaving near targets | AMCL correction jumps | smoothed correction composed with odometry (τ 0.7 s) |
-| Hard to edit target coordinates in a tilted map | walls at −11.5° | `rotate_map.py` → `map_test_0deg` |
+| Hard to edit target coordinates in a tilted map | walls at −11.5° | `rotate_map.py` → `map_test_0deg` (later superseded by `map_small` and removed) |
 | Targets closer to walls requested | — | 0.18 m from both walls is the closest where every leg was reachable in simulation (0.17 got stuck once, 0.15 collides) |
 | New map `map_small` | different SLAM start pose | wall registration + known SLAM start to transfer all points; `real.launch.py` defaults to it |
 
