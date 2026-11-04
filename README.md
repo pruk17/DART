@@ -1,191 +1,365 @@
 # DART — Decision-Adaptive Reward Targeting
 
-Online target-selection + reactive navigation for a **single robot** that has
-**many tasks whose value decays over time** (perishable reward). Target
-platform: **TurtleBot3** (ROS2). This repo currently holds the **pure-Python
-core + a headless simulator**; the ROS2 node layer is not written yet.
+Online target selection and reactive navigation for a **single mobile robot
+delivering many tasks whose value decays over time** (perishable rewards, e.g.
+food that cools down or melts). Runs on a **TurtleBot3 Burger** with
+**ROS 2 Humble**.
 
-> Full concept/design spec: `DART_concept.md` (kept locally, git-ignored — not
-> on GitHub). The essentials are summarized below so work can continue without
-> it.
+- **Decision:** a lookahead planner picks the visiting order that maximises the
+  total value collected, re-planned continuously as values decay.
+- **Navigation:** a reactive, DART-modified **Bug2** (no A\*, no global path
+  planner). The map is used only for localization (AMCL) and goal coordinates.
 
 ---
 
-## 1. The idea in one paragraph
+## Contents
 
-Classic planners pick the **nearest** task and assume value is constant. When
-task value decays over time, nearest-first lets high-value / fast-decaying
-tasks expire. DART instead scores each task by **value collectable on arrival
-minus the value the whole remaining basket loses while travelling there**, and
-re-decides continuously. Navigation is reactive (modified Bug2), **no A\***.
+1. [Repository layout](#1-repository-layout)
+2. [System architecture](#2-system-architecture)
+3. [Decision layer](#3-decision-layer)
+4. [Navigation layer (DART-modified Bug2)](#4-navigation-layer-dart-modified-bug2)
+5. [Localization and safety](#5-localization-and-safety)
+6. [Getting started](#6-getting-started)
+7. [Configuration](#7-configuration)
+8. [Outputs and debugging](#8-outputs-and-debugging)
+9. [Tools](#9-tools)
+10. [Headless simulator](#10-headless-simulator)
+11. [Results so far](#11-results-so-far)
+12. [Known limitations](#12-known-limitations)
 
-## 2. The locked decision rule (concept section 4)
+---
 
-For each candidate target `i`:
+## 1. Repository layout
 
 ```
-Net_i = v_i * exp(-lambda_i * t_i)                       # gain: value of i left on arrival
-      - sum_{j != i} v_j * (1 - exp(-lambda_j * t_i))    # basket-bleed: value others lose en route
-
-t_i = d_i / s        # travel-time estimate (Euclidean distance / speed, NO A*)
+dart/                 pure-Python core (pip package "dart", ROS-agnostic)
+  decay.py              value decay + expiry
+  planner.py            lookahead ordering (full permutation / 2-opt)  <- drives the robot
+  scoring.py            Target / RobotState, greedy Net score
+  decider.py            greedy argmax + hysteresis (simulator baseline only)
+  localization/         PoseSource interface + SimPoseSource
+  sim/                  headless DART-vs-nearest-first comparison
+ros/dart_ros/         ROS 2 Humble package (ament_python)
+  dart_ros/dart_node.py   the online loop: decay -> plan -> switch -> deliver -> navigate
+  dart_ros/navigator.py   Bug2 (pure-pursuit boundary following)
+  dart_ros/pose_source.py odom / AMCL pose sources
+  dart_ros/config.py      YAML loader (include:, half_life, food types)
+  dart_ros/path_map.py    end-of-run path map PNG
+  config/                 common.yaml + per-mode files (sim, sim_amcl, real, real_small, ...)
+  launch/                 sim.launch.py, sim_amcl.launch.py, real.launch.py
+  rviz/ worlds/
+docker/               Humble container (Dockerfile, run.sh, SETUP.md in Thai)
+tools/                map2world.py, rotate_map.py
+maps/                 SLAM maps (map_small = default for the real robot)
 ```
 
-Choose `i* = argmax_i Net_i`. Symbols: `v` base value, `lambda` decay rate
-(`lambda = ln(2)/half_life`), `d` straight-line distance, `s` robot speed.
+The design spec `DART_concept.md` is kept locally and is not part of the repo.
 
 ---
 
-## 3. Status (what is done vs stub)
+## 2. System architecture
 
-| File | Role | Status |
-|---|---|---|
-| `dart/scoring.py` | Net_i math (section 4) | ✅ **implemented + tested** |
-| `dart/decay.py` | value decay + expiry (shared sim + ROS) | ✅ **implemented + tested** |
-| `dart/planner.py` | lookahead ordering (full-permutation <=7, 2-opt above) — drives the robot | ✅ **implemented + tested** |
-| `dart/decider.py` | argmax + hysteresis + nearest-first | ✅ kept as the **sim baseline** (no longer drives the robot) |
-| `dart/sim/world.py`, `run_comparison.py` | headless DART vs nearest-first | ✅ **implemented** |
-| `dart/localization/pose_source.py` | pure `PoseSource` + `SimPoseSource` | ✅ (ROS Odom/AMCL sources live in `dart_ros`) |
+All computation runs on the PC inside the Docker container. The robot's
+Raspberry Pi only runs `turtlebot3_bringup`.
 
-The ROS2 node layer, Bug2 navigator, and AMCL/Odom pose sources are implemented
-in the **`dart_ros`** package (see `../dart_ros`), not here. The old
-`dart/navigator.py` stub and `AmclPoseSource` stub were removed.
+```mermaid
+flowchart LR
+  subgraph Pi["TurtleBot3 (Raspberry Pi)"]
+    B[turtlebot3_bringup<br/>motors · odometry · LDS-02]
+  end
+  subgraph PC["PC — Docker, ROS 2 Humble"]
+    MS[map_server] --> AM[AMCL]
+    AM -- "TF map→odom" --> DN[dart_node]
+    RV[RViz]
+  end
+  B -- "/scan, TF odom→base_footprint" --> AM
+  B -- "/scan, TF" --> DN
+  DN -- "/cmd_vel" --> B
+```
+
+Each cycle of `dart_node` (20 Hz):
+
+```mermaid
+flowchart TD
+  A[pose + scan fresh?] -- no --> S[stop, wait]
+  A -- yes --> D[decay all values · drop expired]
+  D --> W{serving?}
+  W -- yes --> Z[stand still for service_time]
+  W -- no --> P[lookahead plan over remaining targets]
+  P --> H[switch target only if plan beats current by ε]
+  H --> R{within goal_tol of a target?}
+  R -- yes --> V[deliver · log · dwell · restart from here]
+  R -- no --> U{Bug2 says unreachable?}
+  U -- yes --> K[skip target]
+  U -- no --> N[Bug2 step → /cmd_vel]
+```
 
 ---
 
-## 4. Key design decisions already made (do not silently revert)
+## 3. Decision layer
 
-1. **Hysteresis is additive, not multiplicative.** `should_switch` uses
-   `Net_cand - Net_cur > epsilon * |Net_cur|`. The original multiplicative form
-   `Net_cur*(1+eps)` breaks because Net is frequently **negative** in DART.
-2. **`should_switch` signature** is
-   `should_switch(current, candidate, all_targets, robot, params)` — it needs
-   the target list because `net_score` includes the basket-bleed sum.
-3. **`Target.v` holds the CURRENT (already-decayed) value.** The world decays
-   it each step; `World.initial_value` snapshots the starting values so expiry
-   is judged as a fraction of the original. `scoring` projects `v` forward by
-   travel time.
-4. **`make_scenario` assigns VARIED base values** (`v` from {1,2,3,5}). This
-   matters: with uniform `v=1`, DART does NOT beat nearest-first (see results).
+### Value model
+
+Each target $i$ has a position, a base value $v_i^0$ and a decay rate
+$\lambda_i = \ln 2 / t_{1/2,i}$. Values decay continuously (wall-clock time):
+
+$$v_i(t+\Delta t) = v_i(t)\,e^{-\lambda_i \Delta t}$$
+
+A target expires (is dropped) once $v_i < 5\%$ of $v_i^0$.
+
+### Lookahead planner (`dart/planner.py`)
+
+For a candidate visiting order $(k_1, k_2, \dots)$ the planner simulates the
+cumulative arrival times with straight-line travel and a fixed service stop:
+
+$$t_{k_j} = t_{k_{j-1}} + \frac{\lVert p_{k_j} - p_{k_{j-1}}\rVert}{s} + t_{\text{service}}
+\qquad
+\text{total} = \sum_j v_{k_j}\,e^{-\lambda_{k_j} t_{k_j}}$$
+
+(targets that would expire before arrival count 0). It returns the order with
+the highest total: **full permutation** for ≤ 7 targets, **nearest-neighbour +
+2-opt** above that. The plan is recomputed every cycle.
+
+### Commitment and switching (`dart_node`)
+
+- With no current target, the first target of the plan is committed.
+- The current target is **switched** only if
+  $\text{total(plan)} > (1+\varepsilon)\cdot\text{total(current first)}$,
+  $\varepsilon = 0.15$ (hysteresis against flip-flopping). Switching is allowed
+  at any time, also while going round an obstacle; the m-line is redrawn.
+
+### Delivery
+
+- Reaching the current target (within `goal_tol`) delivers it: the robot stops
+  for `service_time` and the next target starts from that spot (new m-line).
+- **Deliver on the way:** passing within `goal_tol` of *another* target also
+  delivers it, then the current target is restarted from there.
+- If Bug2 reports a target unreachable, it is skipped and logged.
 
 ---
 
-## 5. How to run the simulator
+## 4. Navigation layer (DART-modified Bug2)
+
+`ros/dart_ros/dart_ros/navigator.py`. Distances are from the LiDAR; Burger
+radius 0.105 m; values shown are those of `real_small.yaml`.
+
+| Step | Rule |
+|---|---|
+| Go to goal | $w = 1.5\,e_\theta$, $v = v_{max}\cos e_\theta$; no forward motion if the swept corridor is blocked |
+| **Hit** | an obstacle within ±15° of the goal direction closer than `safe_distance` (0.28 m) **and** closer than the goal — or facing the goal with the swept corridor blocked |
+| Side choice | go round on the more open side (Bug2: "either left or right"), chosen at each hit |
+| Boundary following | **pure pursuit** around the tracked boundary point $P$: carrot $= P + d\,\hat n + L\,\hat t$, $d$ = `wall_offset` (0.20 m), $L$ = 0.15 m, at 80 % speed; the point is tracked scan-to-scan in the robot frame; points > 120° behind are ignored |
+| Merging | another obstacle closer than 0.19 m ahead joins the boundary only if the gap to it is narrower than the robot can pass (0.30 m) |
+| Swept corridor | anything < 0.19 m ahead and < 0.14 m off the centre line: if across the path or on the obstacle side it is the next face (follow it, turn away from the obstacle side); if wholly on the free side, turn away from it and keep the boundary |
+| **Leave** | re-crossed the m-line **and** ≥ 5 cm nearer the goal than at the hit **and** the way to the goal is free |
+| **Unreachable** | went > 0.30 m away from the hit point and came back within 0.15 m |
+
+---
+
+## 5. Localization and safety
+
+- **AMCL** on a SLAM map: corrections every 0.1 m / 0.1 rad, resampling every
+  2 updates, `likelihood_field_prob` with **beam skipping** (robust to
+  obstacles that are not in the map), LDS-02 range 0.16–3.5 m.
+- **Pose for control:** live odometry composed with a low-pass filtered AMCL
+  correction (τ = 0.7 s); corrections > 0.3 m / 20° (re-localization) apply at
+  once. This removes the steering jitter caused by AMCL jumps.
+- **Stale-data stop:** the robot stops if pose or scan is older than 1 s (or
+  AMCL silent for 3 s) and resumes automatically.
+- **Clean shutdown:** Ctrl+C stops the node within ~0.5 s and publishes a zero
+  `/cmd_vel` five times.
+- Angular speed is capped at 1.2 rad/s on the real robot so AMCL keeps up.
+
+---
+
+## 6. Getting started
+
+### 6.1 Workspace
+
+colcon does not look inside a package folder, so the ROS package and the
+helper folders are linked next to the clone:
 
 ```bash
-# from the repo root
-python -m dart.sim.run_comparison --targets 20 --seed 0
-```
-
-Reports value collected, targets served, targets expired, finish time — for
-DART vs nearest-first on the same scenario.
-
-### Current results (10 seeds per config, varied v)
-
-| targets | DART avg value | nearest-first avg | DART win-rate |
-|---:|---:|---:|---:|
-| 10 | 8.71 | 8.29 | 80% |
-| 20 | 15.19 | 13.97 | 60% |
-| 30 | 18.49 | 18.52 | 40% |
-| 40 | 24.21 | 22.89 | 70% |
-
-**Interpretation:** with varied value DART wins modestly on ~3/4 configs. It
-consistently **expires MORE targets but collects MORE total value** — i.e. it
-sacrifices low-value tasks to grab high-value ones (the intended behaviour).
-With uniform value (`v=1`) DART ties or loses, because then max-throughput
-(nearest-first) is already near-optimal. The win margin should widen in
-parameter regimes where value-ordering pays (higher speed, wider value range,
-weaker decay) — tuning this is an open task.
-
----
-
-## 6. Target hardware / OS (decisions)
-
-- **Robot:** TurtleBot3 (Burger/Waffle). An older unit (4+ yrs) likely has a
-  Raspberry Pi 3B+ (1 GB RAM); newer ones have Pi 4. Check with
-  `cat /proc/device-tree/model`.
-- **Chosen stack: Ubuntu 22.04 + ROS2 Humble** (most documented, lighter on
-  old SBCs). Flash **Ubuntu Server 22.04 LTS (64-bit)** with Raspberry Pi
-  Imager (Server, not Desktop).
-- **Dev laptop currently runs Ubuntu 24.04 + ROS2 Jazzy.** ROS2 versions must
-  match between PC and robot, so Humble must be made available on the laptop
-  (via Docker `ros:humble` or a 22.04 VM — native Humble on 24.04 is not
-  supported).
-- **⚠️ `/cmd_vel` message type:** Humble uses `geometry_msgs/Twist`; Jazzy
-  defaults to `TwistStamped`. The future `navigator.py` publisher must match
-  whichever distro it runs on.
-
----
-
-## 7. Intended runtime flow on TurtleBot (concept section 5)
-
-```
-startup: load config -> init pose source (AMCL) -> init navigator
-loop while targets remain:
-  1 sense      pose (/amcl_pose) + targets + LiDAR (/scan)
-  2-3 score    scoring.net_score for every target
-  4 select     decider.select_target -> i*  ; navigator.set_goal (m-line)
-  5-6 drive    navigator reactive Bug2 toward i*, avoid obstacles -> /cmd_vel
-  7 re-decide  recompute Net; decider.should_switch (epsilon) may switch target
-  8 serve      on reaching i*, do the task, remove it from the list
-```
-
-Localization: SLAM map built **once** at setup, then **AMCL** localizes in real
-time. The map is used ONLY for localization + goal coordinates, **not** for
-global path planning.
-
----
-
-## 8. Status / next steps
-
-Core algorithm + ROS2 layer are implemented (see `../dart_ros`). Decision now
-uses lookahead planning (`planner.py`), not greedy. Open research: parameter
-sweeps for where DART's advantage is largest, and a receding-horizon vs greedy
-comparison.
-
-## 9. Module layout
-
-```
-dart/
-  __init__.py
-  scoring.py            # Net_i computation            [done]
-  decay.py              # value decay + expiry         [done]
-  planner.py            # lookahead ordering (perm/2-opt) [done, drives the robot]
-  decider.py            # argmax + hysteresis + nearest-first [done, sim baseline]
-  config.yaml           # parameters (s, epsilon, v, lambda)
-  localization/
-    __init__.py
-    pose_source.py      # PoseSource + SimPoseSource   [ROS sources live in dart_ros]
-  sim/
-    __init__.py
-    world.py            # headless world              [done]
-    run_comparison.py   # DART vs nearest-first       [done]
-```
-
-## 10. Repository layout (ROS 2 workspace)
-
-The repo root is the pure-Python `dart` package. The ROS 2 side lives in subfolders:
-
-```
-dart/            pip package (scoring, decay, planner, sim)
-ros/dart_ros/    ROS 2 Humble package: dart_node, Bug2 navigator, configs, launch, rviz
-docker/          Humble container (Dockerfile, run.sh, SETUP.md)
-tools/           map2world.py (map -> Gazebo world), rotate_map.py (axis-align a map)
-maps/            SLAM maps (map_small is the launch default)
-```
-
-colcon does not look inside a package folder, so the workspace links the ROS
-package and the helper folders next to it:
-
-```bash
-mkdir -p ~/DART_ws/src && cd ~/DART_ws/src && git clone https://github.com/pruk17/DART.git
+mkdir -p ~/DART_ws/src && cd ~/DART_ws/src
+git clone https://github.com/pruk17/DART.git
 ln -s DART/ros/dart_ros dart_ros
-cd ~/DART_ws && ln -s src/DART/docker docker && ln -s src/DART/tools tools && ln -s src/DART/maps maps
-./docker/run.sh build && ./docker/run.sh up          # then: colcon build --symlink-install
+cd ~/DART_ws
+ln -s src/DART/docker docker && ln -s src/DART/tools tools && ln -s src/DART/maps maps
 ```
 
-Real robot (PC side, map_small, start = RViz bottom-left facing +x):
+### 6.2 Docker (host Ubuntu 24.04 → Humble container)
 
 ```bash
-ros2 launch dart_ros real.launch.py                                                   # localization + RViz
-ros2 launch dart_ros real.launch.py localization:=false rviz:=false start_dart:=true  # DART
+./docker/run.sh build     # once
+./docker/run.sh up        # shell in the container (/ws = ~/DART_ws)
+./docker/run.sh exec      # more shells
 ```
+
+Inside the container (the `dart` pip package is installed automatically):
+
+```bash
+colcon build --symlink-install && source install/setup.bash
+```
+
+With `--symlink-install`, edits to Python, YAML and launch files take effect
+without rebuilding; only **new** files need another `colcon build`.
+
+### 6.3 Simulation (Gazebo)
+
+```bash
+ros2 launch dart_ros sim.launch.py        # cube world, odometry pose, config/sim.yaml
+ros2 launch dart_ros sim_amcl.launch.py   # world generated from maps/map.yaml, AMCL
+```
+
+### 6.4 Real robot
+
+On the robot: `ros2 launch turtlebot3_bringup robot.launch.py`. On the PC,
+two terminals (defaults: `maps/map_small.yaml`, `config/real_small.yaml`,
+start pose x=0.19, y=−0.78, yaw=0):
+
+```bash
+ros2 launch dart_ros real.launch.py                                                    # localization + RViz
+```
+
+Check the pose in RViz (LiDAR points on the walls; use *2D Pose Estimate* if
+needed), then:
+
+```bash
+ros2 launch dart_ros real.launch.py localization:=false rviz:=false start_dart:=true   # DART
+```
+
+Other map / config / start pose: `map:=… config_file:=… x0:=… y0:=… yaw0:=…`.
+Make sure no other node (e.g. `teleop_keyboard`) publishes `/cmd_vel`.
+
+### 6.5 Recording a run
+
+```bash
+mkdir -p /ws/bags
+ros2 bag record -o /ws/bags/run_$(date +%H%M%S) /scan /tf /tf_static /odom /cmd_vel /rosout
+```
+
+---
+
+## 7. Configuration
+
+Configs are YAML files in `ros/dart_ros/config/`. A file may `include:` another
+and override any value; `common.yaml` holds the shared tuning.
+
+| Key | Default (common) | Real-robot value | Meaning |
+|---|---|---|---|
+| `robot.speed` | 0.20 m/s | 0.20 | nominal speed (also used by the planner) |
+| `robot.goal_tol` | 0.15 m | 0.15 | a target counts as reached within this |
+| `robot.safe_distance` | 0.35 m | 0.28 (`real_small`) | Bug2 hit distance |
+| `robot.wall_offset` | 0.30 m | 0.20 (`real_small`) | distance kept while following a boundary |
+| `robot.max_ang` | 2.84 rad/s | 1.2 (`real`) | angular speed cap |
+| `robot.wall_follow_speed` | 0.8 | 0.8 | speed fraction while following a boundary |
+| `decider.epsilon` | 0.15 | 0.15 | switching hysteresis |
+| `decider.replan_rate` | 20 Hz | 20 | loop / re-plan rate |
+| `expire_threshold` | 0.05 | 0.05 | drop a target below this fraction of its base value |
+| `service_time` | 3.0 s | 3.0 | stop at each delivery |
+| `deadline` | 60 s | 60 | reported in the run log |
+
+**Food types** (`task_types` in `common.yaml`; a target uses `type: <name>` and
+may override `v` / `half_life` itself):
+
+| type | v | half-life | left after 60 s |
+|---|---:|---:|---:|
+| `ice_cream` | 4 | 30 s | 25 % |
+| `fries` | 3 | 35 s | 30 % |
+| `hot_soup` | 4 | 40 s | 35 % |
+| `main_dish` | 5 | 60 s | 50 % |
+| `cold_drink` | 2 | 95 s | 65 % |
+| `salad` | 3 | 185 s | 80 % |
+| `default` | 1 | 60 s | 50 % |
+
+**Targets** in `real_small.yaml` (map frame of `map_small`, 0.18 m from both
+walls of their corner; RViz view):
+
+```yaml
+targets:
+  - { id: m1, position: [0.97, -0.93], type: ice_cream }   # bottom-right
+  - { id: m2, position: [0.97,  0.01], type: main_dish }   # top-right
+  - { id: m3, position: [0.03,  0.01], type: hot_soup  }   # top-left
+  - { id: m4, position: [0.03, -0.93], type: fries     }   # bottom-left (start corner)
+```
+
+`position` is `[x, y]` in metres in the map frame; in RViz `x` grows to the
+right and `y` upwards.
+
+---
+
+## 8. Outputs and debugging
+
+- **Debug block** (once per second): pose, mode (`GO_TO_GOAL` / `WALL_FOLLOW`),
+  command, front clearance, current plan, data ages, every target's value and
+  distance.
+- **Run log** `dart_logs/dart_run_<time>.log`: events (reached, reached on the
+  way, switch, expired, unreachable, stale-data stops) and a summary
+  (finish time vs deadline, delivered, collected value, average quality).
+- **Path map** `dart_logs/dart_run_<time>.png`: trajectory over the map,
+  delivery order and quality of each target.
+- Only the newest 3 runs (log + PNG) are kept.
+
+---
+
+## 9. Tools
+
+From the repo root:
+
+```bash
+python3 tools/map2world.py maps/map.yaml ros/dart_ros/worlds/dart_room.world   # SLAM map -> Gazebo world
+python3 tools/rotate_map.py maps/map_test.yaml maps/map_test_0deg 11.5        # rotate a map (axis-align walls)
+```
+
+---
+
+## 10. Headless simulator
+
+The pure-Python package also contains a headless comparison of the **greedy**
+DART score against nearest-first (it does not use the lookahead planner):
+
+```bash
+python -m dart.sim.run_comparison --targets 20 --seed 0     # or: dart-sim
+```
+
+Greedy score used there:
+
+$$\text{Net}_i = v_i e^{-\lambda_i t_i} - \sum_{j\ne i} v_j\left(1-e^{-\lambda_j t_i}\right),\qquad t_i = d_i/s$$
+
+| targets | DART avg value | nearest-first avg | DART win rate |
+|---:|---:|---:|---:|
+| 10 | 8.71 | 8.29 | 80 % |
+| 20 | 15.19 | 13.97 | 60 % |
+| 30 | 18.49 | 18.52 | 40 % |
+| 40 | 24.21 | 22.89 | 70 % |
+
+(10 seeds per configuration, varied base values.)
+
+---
+
+## 11. Results so far
+
+Real TurtleBot3 Burger, 1.3 × 1.3 m test room:
+
+- **No obstacles:** all targets delivered in every run, ~20–28 s for 3 targets.
+- **Static obstacles:** all targets delivered; tight boundary following
+  (median hug distance 0.20–0.25 m for a 0.20 m setting), no wall hopping.
+- **Obstacles moved during the run:** all targets delivered when a path
+  existed; long detours can exceed the 60 s deadline.
+- Simulation (24 obstacle cases on `map_small`): 22 reached, 2 judged
+  unreachable; 18/18 without obstacles; no collisions.
+
+---
+
+## 12. Known limitations
+
+- The planner estimates travel time from **straight-line distance**, so it does
+  not know when the current target needs a long detour.
+- Bug2 can judge a target **unreachable** when it lies in a pocket whose mouth
+  is only slightly wider than the robot (≈ 0.4 m).
+- There is no general loop detector: following an obstacle that never crosses
+  the m-line nor returns to the hit point could circle for a long time.
+- The LDS-02 sees nothing closer than 0.16 m; an obstacle placed against the
+  robot at start can be missed.
+- Hardware: `turtlebot3_node` stops publishing odometry when the battery is
+  low; the node then stops the robot (stale data) until the robot is restarted.
